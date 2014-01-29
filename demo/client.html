@@ -1,0 +1,105 @@
+<script src="http://code.jquery.com/jquery-1.11.0.min.js"></script>
+<script>
+
+var wsServer = 'ws://157.7.141.215:9503';
+var websocket;
+
+function show(from_id,msg){
+	var m=$("#chat").html();
+	var now = new Date().toLocaleString();
+	$("#chat").html(m+"<br/>"+from_id+"  "+now+":<br/>"+msg);
+	$('#chat').scrollTop(document.getElementById("chat").scrollHeight+$('#chat').height());
+}
+
+function show_online_user(msg){
+	$("#online").html(msg);
+}
+
+function login(){
+	websocket.send(JSON.stringify({
+		mode: "login"
+	}));
+}
+
+function say(){
+	var msg=$("#say").val();
+	if(websocket.readyState !== 1){
+		websocket.close();
+		initWebsocket();
+		setTimeout(function(){
+			say();
+		},250);
+	}
+	else{
+		websocket.send(JSON.stringify({
+			mode: "gp_say",
+			msg:msg
+		}));
+		$("#say").val("");
+		$("#say").focus();
+	}
+}
+
+$(function(){
+	$('#say').keydown(function (e) {
+	  if (e.ctrlKey && e.keyCode == 13) {
+		say();
+	  }
+	});
+	initWebsocket();
+})
+
+
+function initWebsocket(){
+	websocket = new WebSocket(wsServer); 
+	websocket.onopen = function (evt) { 
+		login();
+	}; 
+
+	websocket.onclose = function (evt) { 
+		console.log("Disconnected"); 
+		$("#state").html("Disconnected"); 
+		$("#login_btn").show();
+		$("#online").html("");
+	}; 
+
+	websocket.onmessage = function (evt) { 
+		try{
+			var obj = $.parseJSON(evt.data);
+			if(obj.mode=="login_sucess"){
+				$("#state").html("Welcome "+obj.client_id);
+				$("#login_btn").hide();
+			}
+			else if(obj.mode=="online_user_list"){
+				show_online_user(obj.msg);
+			}
+			else if(obj.mode=="gp_say"){
+				show(obj.from_id,obj.msg);
+			}
+		}
+		catch(e){}
+	}; 
+
+	websocket.onerror = function (evt) { 
+		console.log('Error occured: ' + evt.data);
+	};
+
+}
+
+</script>
+<input type="button" value="login" onclick="initWebsocket();" id="login_btn">
+<div id="state"></div>
+<table border="2px">
+	<tr>
+		<td width="300px" height="300px" border="2px">
+			<div id="chat" style="margin: 5px 0;max-height: 293px;overflow-y: auto;overflow-x: hidden;height: 293px;"></div>
+		</td>
+		<td rowspan="2" id="online" border="2px"></td>
+	</tr>
+	<tr>
+		<td height="60px">
+			<textarea id="say" style="margin: 2px; width: 292px; height: 55px;"></textarea><br/>
+			Ctrl+Enter <input type="button" value="Say" onclick="say()">
+		</td>
+	</tr>
+</table>
