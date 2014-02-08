@@ -7,3 +7,6 @@ swoole websocket demo
 
 在线测试：
 http://157.7.141.215/swoole/kaku/websocket/client.html
+
+swoole安装方法及运行方法：
+https://github.com/matyhtf/swoole_framework/issues/6
