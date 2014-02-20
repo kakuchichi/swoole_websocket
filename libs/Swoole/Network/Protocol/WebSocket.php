@@ -33,6 +33,7 @@ abstract class WebSocket extends HttpServer
     const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
     public $ws_list = array();
+    public $server = array();
     public $connections = array();
     public $max_connect = 10000;
     public $heart_time = 600; //600s life time
@@ -88,7 +89,7 @@ abstract class WebSocket extends HttpServer
         }
         $this->log('clean connections');
     }
-    abstract function onMessage($server,$client_id, $message);
+    abstract function onMessage($client_id, $message);
 
     /**
      * 握手建立连接
@@ -122,6 +123,7 @@ abstract class WebSocket extends HttpServer
      */
     public function onReceive($server, $client_id, $from_id, $data)
     {
+		$this->server=$server;
 //        static $i = 0;
 //        file_put_contents("$i.data", $data);
 //        $i++;
@@ -149,7 +151,7 @@ abstract class WebSocket extends HttpServer
                 //数据包就绪
                 if($ws['finish'])
                 {
-                    $this->opcodeSwitch($server,$client_id, $ws);
+                    $this->opcodeSwitch($client_id, $ws);
                     //还有数据
                     if(strlen($data) > 0)
                     {
@@ -173,7 +175,7 @@ abstract class WebSocket extends HttpServer
                 {
                     //需要使用MaskN来解析
                     $ws['message'] = $this->parseMessage($ws);
-                    $this->opcodeSwitch($server,$client_id, $ws);
+                    $this->opcodeSwitch($client_id, $ws);
                 }
                 //数据过多，可能带有另外一帧的数据
                 else if($ws['length'] < $message_len)
@@ -186,7 +188,7 @@ abstract class WebSocket extends HttpServer
                     $ws['message'] = $this->parseMessage($ws);
                     //$data是下一帧的数据了
                     $data = substr($buffer, $ws['length']);
-                    $this->opcodeSwitch($server,$client_id, $ws);
+                    $this->opcodeSwitch($client_id, $ws);
                     //继续解析帧
                     continue;
                 }
@@ -356,7 +358,7 @@ abstract class WebSocket extends HttpServer
             return $this->server->send($client_id, $out);
         }
     }
-    function opcodeSwitch($server,$client_id, $ws)
+    function opcodeSwitch($client_id, $ws)
     {
         switch($ws['opcode'])
         {
@@ -364,7 +366,7 @@ abstract class WebSocket extends HttpServer
             case self::OPCODE_TEXT_FRAME:
                 //if(0x1 === $ws['fin'])
                 {
-                    $this->onMessage($server,$client_id, $ws);
+                    $this->onMessage($client_id, $ws);
                     //数据已处理完
                     unset($this->ws_list[$client_id]);
                 }
