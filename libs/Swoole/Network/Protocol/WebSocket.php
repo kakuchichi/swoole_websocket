@@ -88,7 +88,7 @@ abstract class WebSocket extends HttpServer
         }
         $this->log('clean connections');
     }
-    abstract function onMessage($client_id, $message);
+    abstract function onMessage($server,$client_id, $message);
 
     /**
      * 握手建立连接
@@ -122,6 +122,10 @@ abstract class WebSocket extends HttpServer
      */
     public function onReceive($server, $client_id, $from_id, $data)
     {
+//        static $i = 0;
+//        file_put_contents("$i.data", $data);
+//        $i++;
+
         //未连接
         if(!isset($this->connections[$client_id]))
         {
@@ -131,25 +135,26 @@ abstract class WebSocket extends HttpServer
         //已连接
         do
         {
+            //新的数据帧
             if(empty($this->ws_list[$client_id]))
             {
                 $ws = $this->parseFrame($data);
+                //var_dump($ws);
                 //解析失败了
                 if($ws === false)
                 {
+                    $this->log("parse frame failed.", 'ERROR');
                     $this->close($client_id, self::CLOSE_PROTOCOL_ERROR);
                 }
                 //数据包就绪
                 if($ws['finish'])
                 {
-                    $this->opcodeSwitch($client_id, $ws);
+                    $this->opcodeSwitch($server,$client_id, $ws);
                     //还有数据
                     if(strlen($data) > 0)
                     {
                         continue;
                     }
-                    //数据已处理完
-                    unset($this->ws_list[$client_id]);
                 }
                 //未就绪，先加入到ws_list中
                 else
@@ -159,25 +164,29 @@ abstract class WebSocket extends HttpServer
             }
             else
             {
-                $ws = $this->ws_list[$client_id];
+                //这里必须是引用，需要保存状态
+                $ws = &$this->ws_list[$client_id];
                 $ws['buffer'] .= $data;
                 $message_len =  strlen($ws['buffer']);
+                //$this->log("wait data.buffer_len=$message_len|require_len={$ws['length']}", 'INFO');
                 if($ws['length'] == $message_len)
                 {
                     //需要使用MaskN来解析
                     $ws['message'] = $this->parseMessage($ws);
-                    $this->opcodeSwitch($client_id, $ws);
-                    unset($this->ws_list[$client_id]);
+                    $this->opcodeSwitch($server,$client_id, $ws);
                 }
                 //数据过多，可能带有另外一帧的数据
                 else if($ws['length'] < $message_len)
                 {
+                    //将buffer保存起来
+                    $buffer = $ws['buffer'];
+                    //分离本帧的数据
+                    $ws['buffer'] = substr($buffer, 0, $ws['length']);
                     //这一帧的数据已完结
-                    $ws['message'] = substr($ws['message'], 0, $ws['length']);
+                    $ws['message'] = $this->parseMessage($ws);
                     //$data是下一帧的数据了
-                    $data = substr($ws['message'], $ws['length']);
-                    $this->opcodeSwitch($client_id, $ws);
-                    unset($this->ws_list[$client_id]);
+                    $data = substr($buffer, $ws['length']);
+                    $this->opcodeSwitch($server,$client_id, $ws);
                     //继续解析帧
                     continue;
                 }
@@ -347,7 +356,7 @@ abstract class WebSocket extends HttpServer
             return $this->server->send($client_id, $out);
         }
     }
-    function opcodeSwitch($client_id, $ws)
+    function opcodeSwitch($server,$client_id, $ws)
     {
         switch($ws['opcode'])
         {
@@ -355,7 +364,9 @@ abstract class WebSocket extends HttpServer
             case self::OPCODE_TEXT_FRAME:
                 //if(0x1 === $ws['fin'])
                 {
-                    $this->onMessage($client_id, $ws);
+                    $this->onMessage($server,$client_id, $ws);
+                    //数据已处理完
+                    unset($this->ws_list[$client_id]);
                 }
 //                else
 //                {

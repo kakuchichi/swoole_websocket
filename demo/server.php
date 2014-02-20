@@ -18,17 +18,17 @@ class WebSocket extends Swoole\Network\Protocol\WebSocket
      * 接收到消息时
      * @see WSProtocol::onMessage()
      */
-    function onMessage($client_id, $ws)
+    function onMessage($serv,$client_id, $ws)
     {
         $this->log("onMessage: ".$client_id.' = '.$ws['message']);
         $this->send($client_id, "Server: ".$ws['message']." client_id:".$client_id);
-		
 		$par=json_decode($ws['message'],true);
+		$conn_list=$serv->connection_list(0,100);//获取从0~100号用户
 		if($par['mode']=="login"){//登陆
 			$re['client_id']=$client_id;
 			$re['mode']="login_sucess";
 			$this->send($client_id,json_encode($re));
-			$this->listOnline();
+			$this->listOnline($serv);
 		}
 		else if($par['mode']=="gp_say"){//群聊
 			$re=array(
@@ -36,45 +36,44 @@ class WebSocket extends Swoole\Network\Protocol\WebSocket
 				'msg'=>nl2br($par['msg']),
 				'from_id'=>$client_id,
 			);
-			$this->gp_say(json_encode($re));
+			$this->gp_say($conn_list,json_encode($re));
 		}
 		else if($par['mode']=="upload"){//未完待续
 			var_dump($par);
 		}
     }
 
-    function gp_say($msg)
+    function gp_say($conn_list,$msg)
     {
-        foreach ($this->connections as $clid => $info)
-        {
-            $this->send($clid, $msg);
-        }
+		foreach($conn_list as $fd){
+			$this->send($fd, $msg);
+		}
     }
 
-    function broadcast($client_id, $msg)
+    function broadcast($conn_list,$client_id, $msg)
     {
-        foreach ($this->connections as $clid => $info)
-        {
-            if ($client_id != $clid)
-            {
-                $this->send($clid, $msg);
-            }
-        }
+		foreach($conn_list as $fd){
+			if ($client_id != $fd)
+			{
+				$this->send($fd, $msg);
+			}
+		}
     }
 	
-	function listOnline($client_id=null){
+	function listOnline($serv,$client_id=null){
 		$msg="Online<br/>";
-		foreach($this->connections as $clid=>$info){
-            if ($client_id != $clid){
-				$msg.=" Client_id : ".$clid."<br/>";
+		$conn_list=$serv->connection_list(0,100);
+		foreach($conn_list as $fd){
+			if ($client_id != $fd){
+				$msg.=" Client_id : ".$fd."<br/>";
 			}
 		}
 		$re=array(
 			'mode'=>'online_user_list',
 			'msg'=>$msg,
 		);
-		foreach($this->connections as $clid=>$info){
-			$this->send($clid,json_encode($re));
+		foreach($conn_list as $fd){
+			$this->send($fd,json_encode($re));
 		}
 	}
 }
@@ -95,5 +94,5 @@ $AppSvr->setLogger(new \Swoole\Log\EchoLog(true)); //Logger
  */
 $server = new \Swoole\Network\Server('157.7.141.215', 9503);
 $server->setProtocol($AppSvr);
-//$server->daemonize(); //作为守护进程
+$server->daemonize(); //作为守护进程
 $server->run(array('worker_num' =>5, 'max_request' =>1000));
